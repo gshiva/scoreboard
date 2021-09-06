@@ -23,6 +23,65 @@
 
 #include <WiFiClientSecure.h>
 
+#define _TASK_SLEEP_ON_IDLE_RUN // Enable 1 ms SLEEP_IDLE powerdowns between tasks if no callback methods were invoked during the pass
+#define _TASK_STATUS_REQUEST    // Compile with support for StatusRequest functionality - triggering tasks on status change events in addition to time only
+#include <TaskScheduler.h>
+
+// Scheduler
+Scheduler ts;
+#define DURATION 10000
+
+// Debug and Test options
+#define _DEBUG_
+//#define _TEST_
+
+#ifdef _DEBUG_
+#define _PP(a) Serial.print(a);
+#define _PL(a) Serial.println(a);
+#else
+#define _PP(a)
+#define _PL(a)
+#endif
+
+
+#define PERIOD1 500
+#define DURATION 10000
+void blink1CB();
+Task tBlink1 ( PERIOD1 * TASK_MILLISECOND, DURATION / PERIOD1, &blink1CB, &ts, true );
+
+inline void LEDOn() {
+  digitalWrite( LED_BUILTIN, HIGH );
+}
+
+inline void LEDOff() {
+  digitalWrite( LED_BUILTIN, LOW );
+}
+
+// === 1 =======================================
+bool LED_state = false;
+void blink1CB() {
+  if ( tBlink1.isFirstIteration() ) {
+    _PP(millis());
+    _PL(": Blink1 - simple flag driven");
+    LED_state = false;
+  }
+
+  if ( LED_state ) {
+    LEDOff();
+    LED_state = false;
+  }
+  else {
+    LEDOn();
+    LED_state = true;
+  }
+
+  if ( tBlink1.isLastIteration() ) {
+    tBlink1.restartDelayed( 2 * TASK_SECOND );
+    LEDOff();
+  }
+}
+
+
 const char *cricclubs_server = "cricclubs.com";
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
@@ -70,7 +129,7 @@ const char wifiInitialApPassword[] = "smrtTHNG8266";
 #define LED_BUILTIN 10
 
 // -- Configuration specific key. The value should be modified if config structure was changed.
-#define CONFIG_VERSION "dem2"
+#define CONFIG_VERSION "sb1"
 
 // -- When CONFIG_PIN is pulled to ground on startup, the Thing will use the initial
 //      password to buld an AP. (E.g. in case of lost password)
@@ -240,8 +299,10 @@ void loop()
       M5.Lcd.println(WiFi.localIP());
       M5.Lcd.println(clubIdValue);
       M5.Lcd.println(matchIdValue);
+      // Serial.println("Executing scheduled task.");
+      ts.execute();
 
-      if (strcmp("0", clubIdValue) != 0 && strcmp("0", matchIdValue) != 0 && 1==10)
+      if (strcmp("0", clubIdValue) != 0 && strcmp("0", matchIdValue) != 0 && 1 == 10)
       {
         WiFiClientSecure client;
         client.setInsecure();
@@ -305,10 +366,10 @@ void loop()
           delay(4000000);
         }
       }
-      else
-      {
-        Serial.println("Wifi not connected yet.");
-      }
+    }
+    else
+    {
+      Serial.println("Wifi not connected yet.");
     }
   }
   iotWebConf.doLoop();
