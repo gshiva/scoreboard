@@ -20,6 +20,7 @@
 ////// Board Setup /////////////////////////////////////////////////////////////////////////
 #include <M5StickC.h>
 #include <Adafruit_PWMServoDriver.h>
+#include "meter.h"
 
 #include <WiFiClientSecure.h>
 
@@ -43,44 +44,49 @@ Scheduler ts;
 #define _PL(a)
 #endif
 
-
 #define PERIOD1 500
 #define DURATION 10000
 void blink1CB();
-Task tBlink1 ( PERIOD1 * TASK_MILLISECOND, DURATION / PERIOD1, &blink1CB, &ts, true );
+Task tBlink1(PERIOD1 *TASK_MILLISECOND, DURATION / PERIOD1, &blink1CB, &ts, true);
 
-inline void LEDOn() {
-  digitalWrite( LED_BUILTIN, HIGH );
+inline void LEDOn()
+{
+  digitalWrite(LED_BUILTIN, HIGH);
 }
 
-inline void LEDOff() {
-  digitalWrite( LED_BUILTIN, LOW );
+inline void LEDOff()
+{
+  digitalWrite(LED_BUILTIN, LOW);
 }
 
 // === 1 =======================================
 bool LED_state = false;
-void blink1CB() {
-  if ( tBlink1.isFirstIteration() ) {
+void blink1CB()
+{
+  if (tBlink1.isFirstIteration())
+  {
     _PP(millis());
     _PL(": Blink1 - simple flag driven");
     LED_state = false;
   }
 
-  if ( LED_state ) {
+  if (LED_state)
+  {
     LEDOff();
     LED_state = false;
   }
-  else {
+  else
+  {
     LEDOn();
     LED_state = true;
   }
 
-  if ( tBlink1.isLastIteration() ) {
-    tBlink1.restartDelayed( 2 * TASK_SECOND );
+  if (tBlink1.isLastIteration())
+  {
+    tBlink1.restartDelayed(2 * TASK_SECOND);
     LEDOff();
   }
 }
-
 
 const char *cricclubs_server = "cricclubs.com";
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
@@ -163,6 +169,8 @@ IotWebConfNumberParameter clubId = IotWebConfNumberParameter("Club ID", "clubId"
 IotWebConfNumberParameter matchId = IotWebConfNumberParameter("Match ID", "matchId", matchIdValue, NUMBER_LEN, "0", "1..1000000", "min='0' max='1000000' step='1'");
 IotWebConfTextParameter tournamentId = iotwebconf::TextParameter("Tournament ID", "tournamentId", tournamentIdValue, NUMBER_LEN, "NACL");
 
+Meter *meter = NULL;
+
 // Initialize the IO ports
 void setup()
 {
@@ -198,6 +206,7 @@ void setup()
   iotWebConf.init();
   prevPos = atoi(internalClockPosValue);
   Serial.printf("Prev Position =  %ld \n", prevPos);
+  meter = new Meter(clockA, clockB, currPos, prevPos);
 
   // -- Set up required URL handlers on the web server.
   server.on("/", handleRoot);
