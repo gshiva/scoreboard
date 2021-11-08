@@ -19,24 +19,49 @@
 
 #include "meter.h"
 
-Meter::Meter(int clockA, int clockB, int currPos, int prevPos)
-    : _clockA(clockA), _clockB(clockB), _prevPos(prevPos), _currPos(currPos),
-      _sv(currPos), _tickPin(clockA), _desPos(currPos)
+void Meter::init(int clockA, int clockB, Adafruit_PWMServoDriver* pwm, int prevPos)
 {
+    _clockA = clockA;
+    _clockB = clockB;
+    _pwm = pwm;
+    _prevPos = prevPos;
+    _currPos = 0;
+    _sv = _currPos;
+    _tickPin = clockA;
+    pinMode(_clockA, OUTPUT);
+    pinMode(_clockB, OUTPUT);
+}
+
+int Meter::des_pos_to_val(int desPos)
+{
+    int scaled_Val = desPos * MIN_POS_INCR;
+    int prev_scaled_Val = _prevPos * MIN_POS_INCR;
+    int d;
+
+    if (scaled_Val > prev_scaled_Val)
+    {
+        d = (scaled_Val - prev_scaled_Val);
+    }
+    else
+    {
+        d = ((MAX_POS) - (prev_scaled_Val - scaled_Val));
+    }
+    Serial.print("New Setting:");
+    Serial.println(d);
+    return d;
 }
 
 void Meter::setPos(int desPos)
 {
     int d = this->des_pos_to_val(desPos);
     cli(); // Interrupt disabled for indivisible processing
-    _prevPos = _desPos;
+    _prevPos = desPos;
     _currPos = 0;
     _sv = d; // Set to the target position of the pulse motor
     sei();   // Interrupt enabled because the setting is completed
 }
 
-inline bool Meter::moveOneStep()
-{
+bool Meter::moveOneStep(){
     if (_currPos < _sv)
     {
         delay(40);
@@ -64,21 +89,13 @@ inline void Meter::doTick()
     }
 }
 
-int Meter::des_pos_to_val(int desPos)
-{
-    int scaled_Val = desPos * MIN_POS_INCR;
-    int prev_scaled_Val = _prevPos * MIN_POS_INCR;
-    int d;
-
-    if (scaled_Val > prev_scaled_Val)
-    {
-        d = (scaled_Val - prev_scaled_Val);
-    }
-    else
-    {
-        d = ((MAX_POS) - (prev_scaled_Val - scaled_Val));
-    }
-    Serial.print("New Setting:");
-    Serial.println(d);
-    return d;
+void Meter::pwm_digitalWrite(int pin, int val) {
+  if (val == LOW)
+  {
+    _pwm->setPWM(pin, 0, 4096);
+  }
+  else
+  {
+    _pwm->setPWM(pin, 4096, 0);
+  }
 }

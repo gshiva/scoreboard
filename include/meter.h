@@ -15,22 +15,23 @@ Class to control meter
 class Meter
 {
 public:
-    Meter(int clockA, int clockB, int currPos, int prevPos = 0);
+    Meter() {}
+    void init(int clockA=0, int clockB=0, Adafruit_PWMServoDriver *pwm=nullptr, int prevPos = 0);
     void setPos(int desPos);
-    inline bool moveOneStep();
+    bool moveOneStep();
 
 private:
     void pwm_digitalWrite(int pin, int value);
     inline void doTick();
     int des_pos_to_val(int desPos);
     void set_des_pos(int d);
-    int _clockA;  // wire 1 connected to the clock
-    int _clockB;  // wire 2 connected to the clock (order doesn't matter)
-    int _tickPin; // keeps track of which clock pin should be fired next
+    int _clockA; // wire 1 connected to the clock
+    int _clockB; // wire 2 connected to the clock (order doesn't matter)
+    Adafruit_PWMServoDriver *_pwm;
     unsigned long _prevPos;
     unsigned long _currPos;
-    unsigned long _desPos;
     volatile int _sv; // set value
+    int _tickPin;     // keeps track of which clock pin should be fired next
     volatile int _d;
 };
 
