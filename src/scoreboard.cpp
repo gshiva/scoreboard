@@ -19,6 +19,7 @@
 
 ////// Board Setup /////////////////////////////////////////////////////////////////////////
 #include <M5StickC.h>
+#undef min
 #include <Adafruit_PWMServoDriver.h>
 #include "meter.h"
 
@@ -30,6 +31,9 @@
 #define _TASK_SLEEP_ON_IDLE_RUN // Enable 1 ms SLEEP_IDLE powerdowns between tasks if no callback methods were invoked during the pass
 #define _TASK_STATUS_REQUEST    // Compile with support for StatusRequest functionality - triggering tasks on status change events in addition to time only
 #include <TaskScheduler.h>
+
+#include <regex>
+#include <string>
 
 // Scheduler
 Scheduler ts;
@@ -86,7 +90,179 @@ WebServer server(80);
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
+using namespace std;
+class MatchDetails
+{
+  int runs;
+  int wickets;
+  int overs;
+  bool initialized;
 
+  int runDigits[3];
+  int wicketDigits[2];
+  int overDigits[3];
+
+public:
+  MatchDetails()
+  {
+    runs = 0;
+    wickets = 0;
+    overs = 0;
+    for (int i = 0; i < 3; i++)
+    {
+      runDigits[i] = 0;
+      if (i < 2)
+      {
+        wicketDigits[i] = 0;
+      }
+      overDigits[i] = 0;
+    }
+    initialized = false;
+  }
+
+  void setRuns(int runs)
+  {
+    this->runs = runs;
+    int temp = runs;
+    for (int i = 0; i < 3; i++)
+    {
+      runDigits[i] = temp % 10;
+      temp /= 10;
+    }
+  }
+
+  void setWickets(int wickets)
+  {
+    this->wickets = wickets;
+    int temp = wickets;
+    for (int i = 0; i < 2; i++)
+    {
+      wicketDigits[i] = temp % 10;
+      temp /= 10;
+    }
+  }
+
+  void setOvers(int overs)
+  {
+    this->overs = overs;
+    int temp = overs;
+    for (int i = 0; i < 3; i++)
+    {
+      overDigits[i] = temp % 10;
+      temp /= 10;
+    }
+  }
+
+  void setInitialized(bool initialized)
+  {
+    this->initialized = initialized;
+  }
+
+  int getRuns()
+  {
+    return runs;
+  }
+
+  int getWickets()
+  {
+    return wickets;
+  }
+
+  int getOvers()
+  {
+    return overs;
+  }
+
+  int getRunDigit(int i)
+  {
+    return runDigits[i];
+  }
+
+  int getWicketDigit(int i)
+  {
+    return wicketDigits[i];
+  }
+
+  int getOverDigit(int i)
+  {
+    return overDigits[i];
+  }
+
+  bool isInitialized()
+  {
+    return initialized;
+  }
+
+  void print()
+  {
+    _PP("runs: ");
+    _PL(runs);
+    _PP("wickets: ");
+    _PL(wickets);
+    _PP("overs: ");
+    _PL(overs);
+  }
+};
+
+MatchDetails getMatchDetails(WiFiClientSecure &client)
+{
+  String sline("not empty");
+  MatchDetails matchDetails;
+
+  Serial.println("Getting match details...");
+
+  while (!matchDetails.isInitialized() && sline.length() > 0)
+  {
+    sline = client.readStringUntil('\n');
+    std::string line = sline.c_str();
+    Serial.println(sline);
+    if (line.find("description") != string::npos)
+    {
+      // sample line
+      // <span id="line9"></span></span><span>&lt;<span class="start-tag">meta</span>
+      // <span class="attribute-name">name</span>='<a class="attribute-value">description</a>'
+      // <span class="attribute-name">content</span>='<a class="attribute-value">
+      // INDIA won by 73 Run(s);INDIA 184/7(20.0 overs) NEW ZEALAND 111/10(17.2 overs)</a>'
+      // <span>/</span>&gt;</span><span>
+
+      // first team playing
+      // SRI LANKA 267/3(88.0 overs)
+
+      // second team playing
+      // WEST INDIES 184/7(20.0 overs) SRI LANKA 267/3(88.0 overs)
+
+      // get the Runs/Wickets/(Overs
+      // using this regex /(\d+)\/(\d+)\((\d+)/gm
+
+      std::regex regex_pattern("(\\d+)\\/(\\d+)\\((\\d+)");
+      std::smatch match;
+      if (std::regex_search(line, match, regex_pattern))
+      {
+        Serial.println("Match found: Num of matches: ");
+        Serial.println(match.size());
+
+        for (int i = 0; i < match.size(); i++)
+        {
+          std::string match_str = match[i];
+          Serial.println(match_str.c_str());
+        }
+        std::string sruns = match[1];
+        String runs(sruns.c_str());
+        std::string swickets = match[2];
+        String wickets(swickets.c_str());
+        std::string sovers = match[3];
+        String overs(sovers.c_str());
+        matchDetails.setRuns(runs.toInt());
+        matchDetails.setWickets(wickets.toInt());
+        matchDetails.setOvers(overs.toInt());
+        matchDetails.setInitialized(true);
+        matchDetails.print();
+      }
+    }
+  }
+
+  return matchDetails;
+}
 
 // -- Initial name of the Thing. Used e.g. as SSID of the own Access Point.
 const char thingName[] = "testThing";
@@ -112,7 +288,6 @@ IotWebConfNumberParameter clubId = IotWebConfNumberParameter("Club ID", "clubId"
 IotWebConfNumberParameter matchId = IotWebConfNumberParameter("Match ID", "matchId", matchIdValue, NUMBER_LEN, "0", "1..1000000", "min='0' max='1000000' step='1'");
 IotWebConfTextParameter tournamentId = iotwebconf::TextParameter("Tournament ID", "tournamentId", tournamentIdValue, NUMBER_LEN, "NACL");
 
-
 void getScoreCB()
 {
   unsigned long currentMillis = millis();
@@ -125,6 +300,11 @@ void getScoreCB()
   client.setInsecure();
 
   Serial.println("\nStarting connection to cricclubs server...");
+  Serial.print("Match ID:");
+  Serial.println(matchIdValue);
+  Serial.print("Club ID:");
+  Serial.println(clubIdValue);
+
   M5.Lcd.println("Starting connection to cricclubs server...");
   if (!client.connect(cricclubs_server, 443))
   {
@@ -157,12 +337,10 @@ void getScoreCB()
     }
     // if there are incoming bytes available
     // from the server, read them and print them:
-    bool titleNotFound = true;
-    while (client.available() && titleNotFound)
+    while (client.available())
     {
-      String line = client.readStringUntil('\n');
-      // skip till title is found
-      if (line.startsWith("<title"))
+      MatchDetails matchDetails = getMatchDetails(client);
+      if (matchDetails.isInitialized())
       {
         String message("Title found for ");
         String clubIDMessage("Club ID:");
@@ -177,11 +355,30 @@ void getScoreCB()
         M5.Lcd.println(tournamentIdValue);
         M5.Lcd.println(clubIDMessage);
         M5.Lcd.println(matchIDMessage);
-        titleNotFound = false;
+        String runsMessage = "Runs: ";
+        runsMessage += matchDetails.getRuns();
+        M5.Lcd.println(runsMessage);
+        String wicketsMessage = "Wickets: ";
+        wicketsMessage += matchDetails.getWickets();
+        M5.Lcd.println(wicketsMessage);
+        String oversMessage = "Overs: ";
+        oversMessage += matchDetails.getOvers();
+        M5.Lcd.println(oversMessage);
       }
+      else
+      {
+        Serial.println("No Title found for ");
+        Serial.println(clubIdValue);
+        Serial.println(matchIdValue);
+        M5.Lcd.setCursor(0, 0);
+        M5.Lcd.println("No Title found for ");
+        M5.Lcd.println(clubIdValue);
+        M5.Lcd.println(matchIdValue);
+      }
+      break;
     }
-
     client.stop();
+    Serial.println("Connection to cricclubs server closed.");
   }
 }
 
@@ -223,7 +420,6 @@ void blink1CB()
     LEDOff();
   }
 }
-
 
 // Initialize the IO ports
 void setup()
