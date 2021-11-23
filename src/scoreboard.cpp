@@ -236,16 +236,10 @@ MatchDetails getMatchDetails(WiFiClientSecure &client)
 
       std::regex regex_pattern("(\\d+)\\/(\\d+)\\((\\d+)");
       std::smatch match;
-      if (std::regex_search(line, match, regex_pattern))
+      string::const_iterator searchStart(line.cbegin());
+      while (regex_search(searchStart, line.cend(), match, regex_pattern))
       {
-        Serial.println("Match found: Num of matches: ");
-        Serial.println(match.size());
-
-        for (int i = 0; i < match.size(); i++)
-        {
-          std::string match_str = match[i];
-          Serial.println(match_str.c_str());
-        }
+        searchStart = match.suffix().first;
         std::string sruns = match[1];
         String runs(sruns.c_str());
         std::string swickets = match[2];
@@ -256,8 +250,8 @@ MatchDetails getMatchDetails(WiFiClientSecure &client)
         matchDetails.setWickets(wickets.toInt());
         matchDetails.setOvers(overs.toInt());
         matchDetails.setInitialized(true);
-        matchDetails.print();
       }
+      matchDetails.print();
     }
   }
 
