@@ -21,7 +21,7 @@
 #include <M5StickC.h>
 #undef min
 #include <Adafruit_PWMServoDriver.h>
-#include "meter.h"
+#include "Dial.h"
 
 #include <WiFiClientSecure.h>
 
@@ -43,21 +43,20 @@ Scheduler ts;
 #define _DEBUG_
 //#define _TEST_
 
-#ifdef _DEBUG_
-#define _PP(a) Serial.print(a);
-#define _PL(a) Serial.println(a);
-#else
-#define _PP(a)
-#define _PL(a)
-#endif
+#include "MatchDetails.h"
 
 #define PERIOD1 500
 #define DURATION 10000
-#define SCORE_PERIOD 60000
+#define SCORE_PERIOD 60000        // 1 minute
+#define CONFIG_SAVE_PERIOD 600000 // 10 minutes
+
 void blink1CB();
 void getScoreCB();
+void saveConfigCB();
+
 Task tBlink1(PERIOD1 *TASK_MILLISECOND, DURATION / PERIOD1, &blink1CB, &ts, true);
 Task tGetScore(SCORE_PERIOD *TASK_MILLISECOND, TASK_FOREVER, &getScoreCB, &ts, true);
+Task tSaveConfig(CONFIG_SAVE_PERIOD *TASK_MILLISECOND, TASK_FOREVER, &saveConfigCB, &ts, true);
 
 unsigned long prevMillis = millis();
 const char *cricclubs_server = "cricclubs.com";
@@ -68,7 +67,7 @@ const char *cricclubs_server = "cricclubs.com";
 #define LED_BUILTIN 10
 
 // -- Configuration specific key. The value should be modified if config structure was changed.
-#define CONFIG_VERSION "sb1"
+#define CONFIG_VERSION "sb2"
 
 // -- When CONFIG_PIN is pulled to ground on startup, the Thing will use the initial
 //      password to buld an AP. (E.g. in case of lost password)
@@ -91,172 +90,6 @@ WebServer server(80);
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 using namespace std;
-class MatchDetails
-{
-  int runs;
-  int wickets;
-  int overs;
-  bool initialized;
-
-  int runDigits[3];
-  int wicketDigits[2];
-  int overDigits[3];
-
-public:
-  MatchDetails()
-  {
-    runs = 0;
-    wickets = 0;
-    overs = 0;
-    for (int i = 0; i < 3; i++)
-    {
-      runDigits[i] = 0;
-      if (i < 2)
-      {
-        wicketDigits[i] = 0;
-      }
-      overDigits[i] = 0;
-    }
-    initialized = false;
-  }
-
-  void setRuns(int runs)
-  {
-    this->runs = runs;
-    int temp = runs;
-    for (int i = 0; i < 3; i++)
-    {
-      runDigits[i] = temp % 10;
-      temp /= 10;
-    }
-  }
-
-  void setWickets(int wickets)
-  {
-    this->wickets = wickets;
-    int temp = wickets;
-    for (int i = 0; i < 2; i++)
-    {
-      wicketDigits[i] = temp % 10;
-      temp /= 10;
-    }
-  }
-
-  void setOvers(int overs)
-  {
-    this->overs = overs;
-    int temp = overs;
-    for (int i = 0; i < 3; i++)
-    {
-      overDigits[i] = temp % 10;
-      temp /= 10;
-    }
-  }
-
-  void setInitialized(bool initialized)
-  {
-    this->initialized = initialized;
-  }
-
-  int getRuns()
-  {
-    return runs;
-  }
-
-  int getWickets()
-  {
-    return wickets;
-  }
-
-  int getOvers()
-  {
-    return overs;
-  }
-
-  int getRunDigit(int i)
-  {
-    return runDigits[i];
-  }
-
-  int getWicketDigit(int i)
-  {
-    return wicketDigits[i];
-  }
-
-  int getOverDigit(int i)
-  {
-    return overDigits[i];
-  }
-
-  bool isInitialized()
-  {
-    return initialized;
-  }
-
-  void print()
-  {
-    _PP("runs: ");
-    _PL(runs);
-    _PP("wickets: ");
-    _PL(wickets);
-    _PP("overs: ");
-    _PL(overs);
-  }
-};
-
-MatchDetails getMatchDetails(WiFiClientSecure &client)
-{
-  String sline("not empty");
-  MatchDetails matchDetails;
-
-  Serial.println("Getting match details...");
-
-  while (!matchDetails.isInitialized() && sline.length() > 0)
-  {
-    sline = client.readStringUntil('\n');
-    std::string line = sline.c_str();
-    Serial.println(sline);
-    if (line.find("description") != string::npos)
-    {
-      // sample line
-      // <span id="line9"></span></span><span>&lt;<span class="start-tag">meta</span>
-      // <span class="attribute-name">name</span>='<a class="attribute-value">description</a>'
-      // <span class="attribute-name">content</span>='<a class="attribute-value">
-      // INDIA won by 73 Run(s);INDIA 184/7(20.0 overs) NEW ZEALAND 111/10(17.2 overs)</a>'
-      // <span>/</span>&gt;</span><span>
-
-      // first team playing
-      // SRI LANKA 267/3(88.0 overs)
-
-      // second team playing
-      // WEST INDIES 184/7(20.0 overs) SRI LANKA 267/3(88.0 overs)
-
-      // get the Runs/Wickets/(Overs
-      // using this regex /(\d+)\/(\d+)\((\d+)/gm
-
-      std::regex regex_pattern("(\\d+)\\/(\\d+)\\((\\d+)");
-      std::smatch match;
-      string::const_iterator searchStart(line.cbegin());
-      while (regex_search(searchStart, line.cend(), match, regex_pattern))
-      {
-        searchStart = match.suffix().first;
-        std::string sruns = match[1];
-        String runs(sruns.c_str());
-        std::string swickets = match[2];
-        String wickets(swickets.c_str());
-        std::string sovers = match[3];
-        String overs(sovers.c_str());
-        matchDetails.setRuns(runs.toInt());
-        matchDetails.setWickets(wickets.toInt());
-        matchDetails.setOvers(overs.toInt());
-        matchDetails.setInitialized(true);
-      }
-      matchDetails.print();
-    }
-  }
-
-  return matchDetails;
-}
 
 // -- Initial name of the Thing. Used e.g. as SSID of the own Access Point.
 const char thingName[] = "testThing";
@@ -264,14 +97,30 @@ const char thingName[] = "testThing";
 // -- Initial password to connect to the Thing, when it creates an own Access Point.
 const char wifiInitialApPassword[] = "smrtTHNG8266";
 
-const int NUM_METERS = 1;
-Meter meters[NUM_METERS];
-int prevPos[NUM_METERS];
-char internalClockPosValue[NUM_METERS][NUMBER_LEN];
-IotWebConfNumberParameter *internalClockPos[NUM_METERS];
+const int NUM_DIALS = 8;
+Dial dials[NUM_DIALS];
+// Dials are assumed to be setup as follows:
+//  1.  The first dial (dials[0]) is the least significant digit of Runs.
+//  2.  The second dial (dials[1]) is the second least significant digit of Runs.
+//  3.  The third dial (dials[2]) is the most significant digit of Runs.
+//  4.  The fourth dial (dials[3]) is the least significant digit of Overs.
+//  5.  The fifth dial (dials[4]) is the second least significant digit of Overs.
+//  6.  The sixth dial (dials[5]) is the most significant digit of Overs.
+//  7.  The seventh dial (dials[6]) is the least significant digit of Wickets.
+//  8.  The eighth dial (dials[7]) is the most significant digit of Wickets.
+
+int prevPos[NUM_DIALS];
+char internalClockPosValue[NUM_DIALS][NUMBER_LEN];
+String labels[NUM_DIALS];
+String ids[NUM_DIALS];
+IotWebConfNumberParameter *internalClockPos[NUM_DIALS];
 char tournamentIdValue[NUMBER_LEN];
 char clubIdValue[NUMBER_LEN];
 char matchIdValue[NUMBER_LEN];
+int prev_runs = 0;
+int prev_overs = 0;
+int prev_wickets = 0;
+bool config_updated = false;
 
 IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword, CONFIG_VERSION);
 // -- You can also use namespace formats e.g.: iotwebconf::TextParameter
@@ -281,6 +130,23 @@ IotWebConfParameterGroup sbSettings = iotwebconf::ParameterGroup("sbSettings", "
 IotWebConfNumberParameter clubId = IotWebConfNumberParameter("Club ID", "clubId", clubIdValue, NUMBER_LEN, "0", "1..1000000", "min='0' max='1000000' step='1'");
 IotWebConfNumberParameter matchId = IotWebConfNumberParameter("Match ID", "matchId", matchIdValue, NUMBER_LEN, "0", "1..1000000", "min='0' max='1000000' step='1'");
 IotWebConfTextParameter tournamentId = iotwebconf::TextParameter("Tournament ID", "tournamentId", tournamentIdValue, NUMBER_LEN, "NACL");
+
+void setDials(MatchDetails &matchDetails, Dial dials[NUM_DIALS])
+{
+  if (matchDetails.isInitialized())
+  {
+    int *runDigits = matchDetails.getRunDigits();
+    int *wicketDigits = matchDetails.getWicketDigits();
+    int *overDigits = matchDetails.getOverDigits();
+    int values[NUM_DIALS] = {runDigits[0], runDigits[1], runDigits[2],
+                             overDigits[0], overDigits[1], overDigits[2],
+                             wicketDigits[0], wicketDigits[1]};
+    for (int i = 0; i < NUM_DIALS; i++)
+    {
+      dials[i].setPos(values[i]);
+    }
+  }
+}
 
 void getScoreCB()
 {
@@ -333,7 +199,8 @@ void getScoreCB()
     // from the server, read them and print them:
     while (client.available())
     {
-      MatchDetails matchDetails = getMatchDetails(client);
+      MatchDetails matchDetails;
+      matchDetails.getMatchDetails(client);
       if (matchDetails.isInitialized())
       {
         String message("Title found for ");
@@ -358,6 +225,17 @@ void getScoreCB()
         String oversMessage = "Overs: ";
         oversMessage += matchDetails.getOvers();
         M5.Lcd.println(oversMessage);
+        if (prev_runs != matchDetails.getRuns() || prev_overs != matchDetails.getOvers() || prev_wickets != matchDetails.getWickets())
+        {
+          prev_runs = matchDetails.getRuns();
+          prev_overs = matchDetails.getOvers();
+          prev_wickets = matchDetails.getWickets();
+          setDials(matchDetails, dials);
+          config_updated = true;
+        } else {
+          config_updated = false;
+          Serial.println("No update required as previous values are same");
+        }
       }
       else
       {
@@ -373,6 +251,31 @@ void getScoreCB()
     }
     client.stop();
     Serial.println("Connection to cricclubs server closed.");
+  }
+}
+
+void saveConfigCB()
+{
+  Serial.println("\nChecking whether config was updated...");
+
+  if (config_updated)
+  {
+    Serial.println("\nSaving config...");
+    M5.Lcd.println("Saving config...");
+    for (int i = 0; i < NUM_DIALS; i++)
+    {
+      dials[i].print();
+      itoa(dials[i].getPos(), internalClockPosValue[i], 10);
+    }
+    iotWebConf.saveConfig();
+    config_updated = false;
+    Serial.println("Config saved.");
+    M5.Lcd.println("Config saved.");
+  }
+  else
+  {
+    Serial.println("No config changes to save.");
+    M5.Lcd.println("No config changes to save.");
   }
 }
 
@@ -432,9 +335,31 @@ void setup()
   Serial.println();
   Serial.println("Starting up...");
 
-  for (int i = 0; i < NUM_METERS; i++)
+  for (int i = 0; i < NUM_DIALS; i++)
   {
-    internalClockPos[i] = new IotWebConfNumberParameter("Internal Clock Position", "internalClockPos", internalClockPosValue[i], NUMBER_LEN, "7", "1..100", "min='0' max='100' step='1'");
+    labels[i] = "Dial " + String(i + 1) + " ";
+    ids[i] = "dial_" + String(i + 1);
+    if (i < 3)
+    {
+      String pos = String(i + 1);
+      labels[i] += "Runs Digit " + pos + ":";
+      ids[i] += "_runs_" + pos;
+    }
+    else if ((i >= 3) && (i < 6))
+    {
+      String pos = String(i - 3);
+      labels[i] += "Overs Digit " + pos + ":";
+      ids[i] += "_overs_" + pos;
+    }
+    else if ((i >= 6) && (i < 8))
+    {
+      String pos = String(i - 6);
+      labels[i] += "Wickets Digit " + String(i - 6) + ":";
+      ids[i] += "_wickets_" + pos;
+    }
+    Serial.println("Label: " + labels[i]);
+    Serial.println("ID: " + ids[i]);
+    internalClockPos[i] = new IotWebConfNumberParameter(labels[i].c_str(), ids[i].c_str(), internalClockPosValue[i], NUMBER_LEN, "0", "0..9", "min='0' max='9' step='1'");
     sbSettings.addItem(internalClockPos[i]);
   }
 
@@ -457,18 +382,38 @@ void setup()
   iotWebConf.init();
   Serial.println("iotwebconf initialized...");
 
-  int clockA = 3;
-  int clockB = 4;
   // Serial.printf("Prev Position =  %d \n", prevPos);
 
-  Serial.println("initializing meters...");
+  Serial.println("initializing dials...");
 
-  for (int i = 0; i < NUM_METERS; i++)
+  // Initialize the dials
+  // Each dial requires two pins to connect to the clock. The order does not matter.
+  // The first dial should be connected to pins 3, 4, and the second to pins 5, 6, and so on.
+  int clockA = 3;
+  int clockB = 4;
+
+  for (int i = 0; i < NUM_DIALS; i++)
   {
-    meters[i].init(clockA + i * 2, clockB + i * 2, &pwm, atoi(internalClockPosValue[i]));
+    int value = atoi(internalClockPosValue[i]);
+    dials[i].init(clockA + i * 2, clockB + i * 2, &pwm, value);
+    // calculate the number of runs using the first 3 digits of the internal clock position
+    if (i < 3)
+    {
+      prev_runs += value * pow(10, (i));
+    }
+    // calculate the number of overs using the 4th - 6th digits of the internal clock position
+    else if ((i >= 3) && (i < 6))
+    {
+      prev_overs += value * pow(10, (i - 3));
+    }
+    // calculate the number of wickets using the 7th - 8th digits of the internal clock position
+    else if ((i >= 6) && (i < 8))
+    {
+      prev_wickets += value * pow(10, (i - 6));
+    }
   }
 
-  Serial.println("meters initialized...");
+  Serial.println("dials initialized...");
 
   // -- Set up required URL handlers on the web server.
   server.on("/", handleRoot);
@@ -484,14 +429,16 @@ char rx_byte = 0;
 
 bool move_one_step()
 {
-  bool move_needed = true;
-  for (int i = 0; i < NUM_METERS; i++)
+  bool move_needed = false;
+  for (int i = 0; i < NUM_DIALS; i++)
   {
-    if (!meters[i].moveOneStep())
+    if (dials[i].moveOneStep())
     {
-      move_needed = false;
+      move_needed = true;
+      break;
     }
   }
+  // Serial.println("move_needed: " + String(move_needed));
   return move_needed;
 }
 
@@ -511,10 +458,10 @@ void loop()
       // Serial.println("Executing scheduled task.");
       ts.execute();
     }
-    else
-    {
-      Serial.println("Wifi not connected yet.");
-    }
+    // else
+    // {
+    //   Serial.println("Wifi not connected yet.");
+    // }
   }
   iotWebConf.doLoop();
 }
@@ -537,7 +484,6 @@ void handleRoot()
   s += atoi(clubIdValue);
   s += "<li>Match ID: ";
   s += atoi(matchIdValue);
-  s += "<li>Internal Clock Position (internal use only): ";
   s += "Go to <a href='config'>configure page</a> to change values.";
   s += "</body></html>\n";
   // int prevPos = atoi(internalClockPosValue);
@@ -548,12 +494,12 @@ void handleRoot()
 void configSaved()
 {
   int desPos = 0;
-  for (int i = 0; i < NUM_METERS; i++)
+  for (int i = 0; i < NUM_DIALS; i++)
   {
     const char *clockPosValue = &internalClockPosValue[i][0];
     sscanf(clockPosValue, "%d", &desPos);
     Serial.printf("New Desired Position =  %d \n", desPos);
-    meters[i].setPos(desPos);
+    dials[i].setPos(desPos);
   }
 
   Serial.println("Configuration was updated.");

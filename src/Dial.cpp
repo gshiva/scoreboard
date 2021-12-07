@@ -17,28 +17,33 @@
 // to be called each time you want the clock to tick.
 //
 
-#include "meter.h"
+#include "Dial.h"
 
-void Meter::init(int clockA, int clockB, Adafruit_PWMServoDriver* pwm, int prevPos)
+void Dial::init(int clockA, int clockB, Adafruit_PWMServoDriver *pwm, int prevPos)
 {
     _clockA = clockA;
     _clockB = clockB;
     _pwm = pwm;
     _prevPos = prevPos;
-    _currPos = 0;
+    _currPos = des_pos_to_val(prevPos);
     _sv = _currPos;
     _tickPin = clockA;
-    pinMode(_clockA, OUTPUT);
-    pinMode(_clockB, OUTPUT);
+    if (clockA == 3)
+    {
+        pinMode(_clockA, OUTPUT);
+        pinMode(_clockB, OUTPUT);
+    }
+    Serial.println("Dial init:");
+    this->print();
 }
 
-int Meter::des_pos_to_val(int desPos)
+int Dial::des_pos_to_val(int desPos)
 {
     int scaled_Val = desPos * MIN_POS_INCR;
     int prev_scaled_Val = _prevPos * MIN_POS_INCR;
     int d;
 
-    if (scaled_Val > prev_scaled_Val)
+    if (scaled_Val >= prev_scaled_Val)
     {
         d = (scaled_Val - prev_scaled_Val);
     }
@@ -46,12 +51,16 @@ int Meter::des_pos_to_val(int desPos)
     {
         d = ((MAX_POS) - (prev_scaled_Val - scaled_Val));
     }
-    Serial.print("New Setting:");
-    Serial.println(d);
+    Serial.print("New Setting for desPos: ");
+    Serial.print(desPos);
+    Serial.printf("\tprevPos: %ld", _prevPos);
+    Serial.printf("\tscaled_Val: %d", scaled_Val);
+    Serial.printf("\tprev_scaled_Val: %d", prev_scaled_Val);
+    Serial.printf("\tdiff = %d\n", d);
     return d;
 }
 
-void Meter::setPos(int desPos)
+void Dial::setPos(int desPos)
 {
     int d = this->des_pos_to_val(desPos);
     cli(); // Interrupt disabled for indivisible processing
@@ -59,11 +68,37 @@ void Meter::setPos(int desPos)
     _currPos = 0;
     _sv = d; // Set to the target position of the pulse motor
     sei();   // Interrupt enabled because the setting is completed
+    Serial.println("Setting Complete");
+    this->print();
 }
 
-bool Meter::moveOneStep(){
+int Dial::getPos()
+{
+    return _prevPos;
+}
+
+void Dial::print()
+{
+    Serial.print("Dial: currPos: ");
+    Serial.print(_currPos);
+    Serial.print("\t_sv: ");
+    Serial.print(_sv);
+    Serial.print("\t_prevPos: ");
+    Serial.print(_prevPos);
+    Serial.print("\tclockA: ");
+    Serial.print(_clockA);
+    Serial.print("\tclockB: ");
+    Serial.print(_clockB);
+    Serial.print("\t_tickPin: ");
+    Serial.print(_tickPin);
+    Serial.print("\n");
+}
+
+bool Dial::moveOneStep()
+{
     if (_currPos < _sv)
     {
+        // this->print();
         delay(40);
         this->doTick();
         _currPos += 10;
@@ -71,7 +106,7 @@ bool Meter::moveOneStep(){
     return _currPos < _sv;
 }
 
-inline void Meter::doTick()
+inline void Dial::doTick()
 {
     // Energize the electromagnet in the correct direction.
     pwm_digitalWrite(_tickPin, HIGH);
@@ -89,13 +124,14 @@ inline void Meter::doTick()
     }
 }
 
-void Meter::pwm_digitalWrite(int pin, int val) {
-  if (val == LOW)
-  {
-    _pwm->setPWM(pin, 0, 4096);
-  }
-  else
-  {
-    _pwm->setPWM(pin, 4096, 0);
-  }
+void Dial::pwm_digitalWrite(int pin, int val)
+{
+    if (val == LOW)
+    {
+        _pwm->setPWM(pin, 0, 4096);
+    }
+    else
+    {
+        _pwm->setPWM(pin, 4096, 0);
+    }
 }

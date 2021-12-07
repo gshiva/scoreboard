@@ -1,9 +1,9 @@
 /*
-Class to control meter
+Class to control Dial
 */
 
-#ifndef _METER_H
-#define _METER_H
+#ifndef _DIAL_H
+#define _DIAL_H
 
 #include <M5StickC.h>
 #include <Adafruit_PWMServoDriver.h>
@@ -12,13 +12,15 @@ Class to control meter
 #define NUM_ITEMS 10 // Number of things to show. Not tested with number of items that are not clean divisor of MAX_POS
 #define MIN_POS_INCR MAX_POS / NUM_ITEMS
 
-class Meter
+class Dial
 {
 public:
-    Meter() {}
+    Dial() {}
     void init(int clockA=0, int clockB=0, Adafruit_PWMServoDriver *pwm=nullptr, int prevPos = 0);
     void setPos(int desPos);
     bool moveOneStep();
+    int getPos();
+    void print();
 
 private:
     void pwm_digitalWrite(int pin, int value);
@@ -30,9 +32,9 @@ private:
     Adafruit_PWMServoDriver *_pwm;
     unsigned long _prevPos;
     unsigned long _currPos;
-    volatile int _sv; // set value
+    int _sv; // set value
     int _tickPin;     // keeps track of which clock pin should be fired next
-    volatile int _d;
+    int _d;
 };
 
 #endif
