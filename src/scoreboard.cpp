@@ -21,7 +21,7 @@
 #include <M5StickC.h>
 #undef min
 #include <Adafruit_PWMServoDriver.h>
-#include "Dial.h"
+#include "ClockDial.h"
 
 #include <WiFiClientSecure.h>
 
@@ -89,7 +89,7 @@ WebServer server(80);
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
-using namespace std;
+// using namespace std;
 
 // -- Initial name of the Thing. Used e.g. as SSID of the own Access Point.
 const char thingName[] = "testThing";
@@ -99,6 +99,7 @@ const char wifiInitialApPassword[] = "smrtTHNG8266";
 
 const int NUM_DIALS = 8;
 Dial dials[NUM_DIALS];
+bool dial_initialization_complete = false;
 // Dials are assumed to be setup as follows:
 //  1.  The first dial (dials[0]) is the least significant digit of Runs.
 //  2.  The second dial (dials[1]) is the second least significant digit of Runs.
@@ -133,7 +134,7 @@ IotWebConfTextParameter tournamentId = iotwebconf::TextParameter("Tournament ID"
 
 void setDials(MatchDetails &matchDetails, Dial dials[NUM_DIALS])
 {
-  if (matchDetails.isInitialized())
+  if (matchDetails.isInitialized() && dial_initialization_complete)
   {
     int *runDigits = matchDetails.getRunDigits();
     int *wicketDigits = matchDetails.getWicketDigits();
@@ -212,6 +213,7 @@ void getScoreCB()
         matchIDMessage += atoi(matchIdValue);
         message += matchIDMessage;
         Serial.println(message);
+        M5.Lcd.fillScreen(BLACK);
         M5.Lcd.setCursor(0, 0);
         M5.Lcd.println(tournamentIdValue);
         M5.Lcd.println(clubIDMessage);
@@ -232,7 +234,9 @@ void getScoreCB()
           prev_wickets = matchDetails.getWickets();
           setDials(matchDetails, dials);
           config_updated = true;
-        } else {
+        }
+        else
+        {
           config_updated = false;
           Serial.println("No update required as previous values are same");
         }
@@ -242,6 +246,7 @@ void getScoreCB()
         Serial.println("No Title found for ");
         Serial.println(clubIdValue);
         Serial.println(matchIdValue);
+        M5.Lcd.fillScreen(BLACK);
         M5.Lcd.setCursor(0, 0);
         M5.Lcd.println("No Title found for ");
         M5.Lcd.println(clubIdValue);
@@ -258,7 +263,7 @@ void saveConfigCB()
 {
   Serial.println("\nChecking whether config was updated...");
 
-  if (config_updated)
+  if (config_updated && dial_initialization_complete)
   {
     Serial.println("\nSaving config...");
     M5.Lcd.println("Saving config...");
@@ -395,7 +400,11 @@ void setup()
   for (int i = 0; i < NUM_DIALS; i++)
   {
     int value = atoi(internalClockPosValue[i]);
+    Serial.printf("dials %d initializing...\n", i);
+
     dials[i].init(clockA + i * 2, clockB + i * 2, &pwm, value);
+    Serial.printf("dials %d initialized...\n", i);
+
     // calculate the number of runs using the first 3 digits of the internal clock position
     if (i < 3)
     {
@@ -412,7 +421,7 @@ void setup()
       prev_wickets += value * pow(10, (i - 6));
     }
   }
-
+  dial_initialization_complete = true;
   Serial.println("dials initialized...");
 
   // -- Set up required URL handlers on the web server.
@@ -430,12 +439,14 @@ char rx_byte = 0;
 bool move_one_step()
 {
   bool move_needed = false;
-  for (int i = 0; i < NUM_DIALS; i++)
-  {
-    if (dials[i].moveOneStep())
+  if (dial_initialization_complete) {
+    for (int i = 0; i < NUM_DIALS; i++)
     {
-      move_needed = true;
-      break;
+      if (dials[i].moveOneStep())
+      {
+        move_needed = true;
+        break;
+      }
     }
   }
   // Serial.println("move_needed: " + String(move_needed));
@@ -494,15 +505,20 @@ void handleRoot()
 void configSaved()
 {
   int desPos = 0;
-  for (int i = 0; i < NUM_DIALS; i++)
-  {
-    const char *clockPosValue = &internalClockPosValue[i][0];
-    sscanf(clockPosValue, "%d", &desPos);
-    Serial.printf("New Desired Position =  %d \n", desPos);
-    dials[i].setPos(desPos);
+  if (dial_initialization_complete) {
+    for (int i = 0; i < NUM_DIALS; i++)
+    {
+      const char *clockPosValue = &internalClockPosValue[i][0];
+      sscanf(clockPosValue, "%d", &desPos);
+      Serial.printf("New Desired Position =  %d \n", desPos);
+      dials[i].setPos(desPos);
+    }
+
+    Serial.println("Configuration was updated.");
+  } else {
+    Serial.println("Configuration was not updated. Dials not initialized yet.");
   }
 
-  Serial.println("Configuration was updated.");
 }
 
 bool formValidator(iotwebconf::WebRequestWrapper *webRequestWrapper)

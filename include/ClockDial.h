@@ -12,10 +12,10 @@ Class to control Dial
 #define NUM_ITEMS 10 // Number of things to show. Not tested with number of items that are not clean divisor of MAX_POS
 #define MIN_POS_INCR MAX_POS / NUM_ITEMS
 
-class Dial
+class ClockDial
 {
 public:
-    Dial() {}
+    ClockDial() {}
     void init(int clockA=0, int clockB=0, Adafruit_PWMServoDriver *pwm=nullptr, int prevPos = 0);
     void setPos(int desPos);
     bool moveOneStep();

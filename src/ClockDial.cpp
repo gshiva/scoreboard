@@ -17,9 +17,9 @@
 // to be called each time you want the clock to tick.
 //
 
-#include "Dial.h"
+#include "ClockDial.h"
 
-void Dial::init(int clockA, int clockB, Adafruit_PWMServoDriver *pwm, int prevPos)
+void ClockDial::init(int clockA, int clockB, Adafruit_PWMServoDriver *pwm, int prevPos)
 {
     _clockA = clockA;
     _clockB = clockB;
@@ -28,16 +28,19 @@ void Dial::init(int clockA, int clockB, Adafruit_PWMServoDriver *pwm, int prevPo
     _currPos = des_pos_to_val(prevPos);
     _sv = _currPos;
     _tickPin = clockA;
+    Serial.println("Setting pinMode:");
+    // For some unknown reason, if the below is done for any other value the program crashes
     if (clockA == 3)
     {
         pinMode(_clockA, OUTPUT);
         pinMode(_clockB, OUTPUT);
     }
+
     Serial.println("Dial init:");
     this->print();
 }
 
-int Dial::des_pos_to_val(int desPos)
+int ClockDial::des_pos_to_val(int desPos)
 {
     int scaled_Val = desPos * MIN_POS_INCR;
     int prev_scaled_Val = _prevPos * MIN_POS_INCR;
@@ -60,7 +63,7 @@ int Dial::des_pos_to_val(int desPos)
     return d;
 }
 
-void Dial::setPos(int desPos)
+void ClockDial::setPos(int desPos)
 {
     int d = this->des_pos_to_val(desPos);
     cli(); // Interrupt disabled for indivisible processing
@@ -72,12 +75,12 @@ void Dial::setPos(int desPos)
     this->print();
 }
 
-int Dial::getPos()
+int ClockDial::getPos()
 {
     return _prevPos;
 }
 
-void Dial::print()
+void ClockDial::print()
 {
     Serial.print("Dial: currPos: ");
     Serial.print(_currPos);
@@ -94,23 +97,23 @@ void Dial::print()
     Serial.print("\n");
 }
 
-bool Dial::moveOneStep()
+bool ClockDial::moveOneStep()
 {
     if (_currPos < _sv)
     {
-        // this->print();
-        delay(40);
+        this->print();
+        delay(40); // delay(40);
         this->doTick();
         _currPos += 10;
     }
     return _currPos < _sv;
 }
 
-inline void Dial::doTick()
+inline void ClockDial::doTick()
 {
     // Energize the electromagnet in the correct direction.
     pwm_digitalWrite(_tickPin, HIGH);
-    delay(10);
+    delay(30); // delay(10);
     pwm_digitalWrite(_tickPin, LOW);
 
     // Switch the direction so it will fire in the opposite way next time.
@@ -124,7 +127,7 @@ inline void Dial::doTick()
     }
 }
 
-void Dial::pwm_digitalWrite(int pin, int val)
+void ClockDial::pwm_digitalWrite(int pin, int val)
 {
     if (val == LOW)
     {
