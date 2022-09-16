@@ -2,8 +2,8 @@
 Class to control Dial
 */
 
-#ifndef _DIAL_H
-#define _DIAL_H
+#ifndef _CLOCK_DIAL_H
+#define _CLOCK_DIAL_H
 
 #include <M5StickC.h>
 #include <Adafruit_PWMServoDriver.h>

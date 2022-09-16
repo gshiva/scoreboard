@@ -21,7 +21,7 @@
 #include <M5StickC.h>
 #undef min
 #include <Adafruit_PWMServoDriver.h>
-#include "ClockDial.h"
+#include "ServoDial.h"
 
 #include <WiFiClientSecure.h>
 
@@ -98,7 +98,7 @@ const char thingName[] = "testThing";
 const char wifiInitialApPassword[] = "smrtTHNG8266";
 
 const int NUM_DIALS = 8;
-Dial dials[NUM_DIALS];
+ServoDial dials[NUM_DIALS];
 bool dial_initialization_complete = false;
 // Dials are assumed to be setup as follows:
 //  1.  The first dial (dials[0]) is the least significant digit of Runs.
@@ -110,7 +110,7 @@ bool dial_initialization_complete = false;
 //  7.  The seventh dial (dials[6]) is the least significant digit of Wickets.
 //  8.  The eighth dial (dials[7]) is the most significant digit of Wickets.
 
-int prevPos[NUM_DIALS];
+
 char internalClockPosValue[NUM_DIALS][NUMBER_LEN];
 String labels[NUM_DIALS];
 String ids[NUM_DIALS];
@@ -132,7 +132,7 @@ IotWebConfNumberParameter clubId = IotWebConfNumberParameter("Club ID", "clubId"
 IotWebConfNumberParameter matchId = IotWebConfNumberParameter("Match ID", "matchId", matchIdValue, NUMBER_LEN, "0", "1..1000000", "min='0' max='1000000' step='1'");
 IotWebConfTextParameter tournamentId = iotwebconf::TextParameter("Tournament ID", "tournamentId", tournamentIdValue, NUMBER_LEN, "NACL");
 
-void setDials(MatchDetails &matchDetails, Dial dials[NUM_DIALS])
+void setDials(MatchDetails &matchDetails, ServoDial dials[NUM_DIALS])
 {
   if (matchDetails.isInitialized() && dial_initialization_complete)
   {
@@ -331,7 +331,7 @@ void setup()
 
   Serial.begin(115200);
   pwm.begin();
-  pwm.setPWMFreq(1000); // Set to whatever you like, we don't use it in this demo!
+  pwm.setPWMFreq(60); // Setting it to 60 Hz ~50Hz~  as recommended by the https://dronebotworkshop.com/esp32-servo/ page
 
   // if you want to really speed stuff up, you can go into 'fast 400khz I2C' mode
   // some i2c devices dont like this so much so if you're sharing the bus, watch
@@ -391,18 +391,12 @@ void setup()
 
   Serial.println("initializing dials...");
 
-  // Initialize the dials
-  // Each dial requires two pins to connect to the clock. The order does not matter.
-  // The first dial should be connected to pins 3, 4, and the second to pins 5, 6, and so on.
-  int clockA = 3;
-  int clockB = 4;
-
   for (int i = 0; i < NUM_DIALS; i++)
   {
     int value = atoi(internalClockPosValue[i]);
     Serial.printf("dials %d initializing...\n", i);
 
-    dials[i].init(clockA + i * 2, clockB + i * 2, &pwm, value);
+    dials[i].init(i, &pwm, value);
     Serial.printf("dials %d initialized...\n", i);
 
     // calculate the number of runs using the first 3 digits of the internal clock position
@@ -436,32 +430,13 @@ void setup()
 
 char rx_byte = 0;
 
-bool move_one_step()
-{
-  bool move_needed = false;
-  if (dial_initialization_complete) {
-    for (int i = 0; i < NUM_DIALS; i++)
-    {
-      if (dials[i].moveOneStep())
-      {
-        move_needed = true;
-        break;
-      }
-    }
-  }
-  // Serial.println("move_needed: " + String(move_needed));
-  return move_needed;
-}
-
 // Main loop
 void loop()
 {
   // goto the end position and then process
   // web commands and
   // query cricinfo every 60 seconds
-  if (!move_one_step())
-  {
-    if (WiFi.status() == WL_CONNECTED)
+  if (WiFi.status() == WL_CONNECTED)
     {
       M5.Lcd.println(WiFi.localIP());
       M5.Lcd.println(clubIdValue);
@@ -469,11 +444,7 @@ void loop()
       // Serial.println("Executing scheduled task.");
       ts.execute();
     }
-    // else
-    // {
-    //   Serial.println("Wifi not connected yet.");
-    // }
-  }
+
   iotWebConf.doLoop();
 }
 
